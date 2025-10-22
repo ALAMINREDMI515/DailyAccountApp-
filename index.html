@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>الحساب اليومي - تطبيق الهاتف</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#007bff">
+<style>
+  body { font-family: Tahoma; margin: 10px; direction: rtl; background: #f0f2f5; }
+  h1 { text-align: center; font-size: 1.8em; margin-bottom: 10px; }
+  input, select, button { padding: 10px; margin: 5px 0; border-radius: 8px; border: 1px solid #aaa; font-size: 1em; width: 100%; box-sizing: border-box; }
+  button { background-color: #007bff; color: white; border: none; font-weight: bold; }
+  button:hover { background-color: #0056b3; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.95em; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: center; word-break: break-word; }
+  th { background: #e9ecef; }
+  .income { color: green; font-weight: bold; }
+  .expense { color: red; font-weight: bold; }
+  @media (max-width: 600px){
+    th, td { font-size: 0.85em; padding: 6px; }
+    h1 { font-size: 1.5em; }
+    input, select, button { font-size: 0.95em; padding: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>الحساب اليومي</h1>
+
+<input type="text" id="desc" placeholder="الوصف">
+<select id="type">
+  <option value="مدخول">مدخول</option>
+  <option value="مصروف">مصروف</option>
+</select>
+<input type="number" id="amount" placeholder="المبلغ">
+<button onclick="addTransaction()">إضافة / حفظ التعديل</button>
+<button onclick="clearAll()">مسح الكل</button>
+<button onclick="exportPDF()">تصدير PDF</button>
+
+<h3>مجموع المداخيل: <span id="income">0</span> | مجموع المصاريف: <span id="expense">0</span> | الرصيد: <span id="balance">0</span></h3>
+
+<table id="table">
+  <thead>
+    <tr>
+      <th>الوصف</th>
+      <th>النوع</th>
+      <th>المبلغ</th>
+      <th>التاريخ والساعة</th>
+      <th>تعديل</th>
+      <th>حذف</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+let editIndex = -1;
+
+function addTransaction() {
+  const desc = document.getElementById('desc').value.trim();
+  const type = document.getElementById('type').value;
+  const amount = parseFloat(document.getElementById('amount').value);
+  if(!desc || isNaN(amount) || amount <= 0){ alert("ادخل البيانات بشكل صحيح"); return; }
+  const date = new Date().toLocaleString();
+
+  if(editIndex === -1){
+    transactions.push({desc, type, amount, date});
+  } else {
+    transactions[editIndex] = {desc, type, amount, date};
+    editIndex = -1;
+  }
+
+  saveRender();
+  document.getElementById('desc').value='';
+  document.getElementById('amount').value='';
+}
+
+function editTransaction(index){
+  editIndex = index;
+  const t = transactions[index];
+  document.getElementById('desc').value = t.desc;
+  document.getElementById('type').value = t.type;
+  document.getElementById('amount').value = t.amount;
+  document.getElementById('desc').focus();
+}
+
+function deleteTransaction(index){
+  if(confirm("هل تريد حذف هذه العملية؟")){
+    transactions.splice(index,1);
+    saveRender();
+  }
+}
+
+function clearAll(){
+  if(confirm("هل تريد مسح كل العمليات؟")){
+    transactions = [];
+    saveRender();
+  }
+}
+
+function saveRender(){
+  localStorage.setItem('transactions', JSON.stringify(transactions));
+  renderTable();
+}
+
+function renderTable(){
+  const tbody = document.querySelector('#table tbody');
+  tbody.innerHTML='';
+  let totalIncome=0, totalExpense=0;
+  transactions.forEach((t,i)=>{
+    if(t.type==='مدخول') totalIncome+=t.amount;
+    else totalExpense+=t.amount;
+    const row=document.createElement('tr');
+    row.innerHTML=`<td>${t.desc}</td>
+                   <td class="${t.type==='مدخول'?'income':'expense'}">${t.type}</td>
+                   <td>${t.amount}</td>
+                   <td>${t.date}</td>
+                   <td><button onclick="editTransaction(${i})">تعديل</button></td>
+                   <td><button onclick="deleteTransaction(${i})">حذف</button></td>`;
+    tbody.appendChild(row);
+  });
+  document.getElementById('income').textContent=totalIncome;
+  document.getElementById('expense').textContent=totalExpense;
+  document.getElementById('balance').textContent=totalIncome-totalExpense;
+}
+
+renderTable();
+
+function exportPDF() {
+  const totalIncome = transactions.filter(t=>t.type==='مدخول').reduce((a,b)=>a+b.amount,0);
+  const totalExpense = transactions.filter(t=>t.type==='مصروف').reduce((a,b)=>a+b.amount,0);
+  const balance = totalIncome - totalExpense;
+
+  let html = `<html><head><meta charset="UTF-8"><style>
+  table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+  th, td { border: 1px solid #000; padding: 5px; text-align: center; }
+  th { background: #e9ecef; }
+  .income { color: green; font-weight: bold; }
+  .expense { color: red; font-weight: bold; }
+  </style></head><body>`;
+  
+  html += `<h2>تقرير الحساب اليومي</h2>`;
+  html += `<p>مجموع المداخيل: ${totalIncome}</p>`;
+  html += `<p>مجموع المصاريف: ${totalExpense}</p>`;
+  html += `<p>الرصيد: ${balance}</p>`;
+  
+  html += `<table><thead><tr><th>الوصف</th><th>النوع</th><th>المبلغ</th><th>التاريخ والساعة</th></tr></thead><tbody>`;
+  transactions.forEach(t=>{
+    const cls = t.type==='مدخول'?'income':'expense';
+    html += `<tr><td>${t.desc}</td><td class="${cls}">${t.type}</td><td>${t.amount}</td><td>${t.date}</td></tr>`;
+  });
+  html += `</tbody></table></body></html>`;
+
+  const blob = new Blob([html], { type: 'application/vnd.ms-htmlhelp' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'الحساب_اليومي.pdf';
+  link.click();
+}
+
+// تسجيل Service Worker
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(()=>console.log('Service Worker مسجّل'));
+}
+</script>
+
+</body>
+</html>
